@@ -207,3 +207,90 @@ aws kms get-key-rotation-status --key-id $KMS_KEY_ID
 - aws EFS volume
 - aws FSx
 - 기타..
+
+# 1.8 Secrets Manager를 사용해 암호 저장, 암호화, 액세스
+
+``` shell
+# 보안 암호 생성
+RANDOM_STRING=$(aws secretsmanager get-random-password --password-length 32 --require-each-included-type --output text --query RandomPassword)
+
+# secret manager에 새 암호 저장
+SECRET_ARN=$(aws secretsmanager create-secret --name aws108/Secret1 --description "aws108 Secret 1" --secret-string $RANDOM_STRING --output text --query ARN)
+
+# sed명령 이용해서 secret-access-policy 파일 생성
+sed -e "s|SECRET_ARN|$SECRET_ARN|g" secret-access-policy-template.json > secret-access-policy.json
+
+# IAM 정책 생성
+aws iam create-policy --policy-name aws108secretaccess --policy-document file://secret-access-policy.json
+
+# role 생성ㅇ
+aws iam create-role --role-name aws108role --assume-role-policy-document file://assume-role-policy.json --output text --query Role.Arn
+
+# 정책을 역할에 추가
+aws iam attach-role-policy --policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/aws108secretaccess --role-name aws108role
+
+aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore --role-name aws108role
+
+# 인스턴스 접속
+aws ssm start-session --target $instance_id
+
+# 여기서부터 잘안됐음. vpc에 엔드포인트도 생성해보고 ec2 인스턴스에 ssm agent도 설치해보고 했지만 그냥 ec2 프로필에 들어가서 iam 역할에 방금 만든 aws108role 넣어주면 되는 것 같음. 추가적으로 session manager 플러그인이 없다고 뜨면 mac 같은 경우엔 여기 따라하면 됨. https://docs.aws.amazon.com/ko_kr/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html#install-plugin-macos
+
+# 이후 접속하면 잘 접속이 되고 따라하면 잘 됨.
+export AWS_DEFAULT_REGION=us-west-2
+aws secretsmanager get-secret-value --secret-id aws108/Secret1
+
+```
+
+# 1.9 S3 버킷에 대한 퍼블릭 액세스 차단
+``` shell
+# access analyzer 생성(하기 전에 생성하고 있는 사용자에 IAMAccessAnalyzerFullAccess 정책을 추가했음)
+ANALYZER_ARN=$(aws accessanalyzer create-analyzer --analyzer-name aws109 --type ACCOUNT --output text --query arn)
+
+# s3 버킷 스캔
+aws accessanalyzer start-resource-scan --analyzer-arn $ANALYZER_ARN --resource-arn arn:aws:s3:::aws109
+
+# 스캔 결과 확인(이미 퍼블릭 block 해놓아서 false로 되어있음)
+aws accessanalyzer get-analyzed-resource --analyzer-arn $ANALYZER_ARN --resource-arn arn:aws:s3:::aws109
+
+# 퍼블릭 액세스 차단
+aws s3api put-public-access-block \
+     --bucket aws109 \
+     --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+
+# 버킷 삭제
+aws s3api delete-bucket --bucket aws109
+```
+
+# 1.10 CloudFront를 사용해 S3에서 안전하게 웹 콘텐츠 제공
+
+```shell
+# 버킷 정책이 참고할 cloudfront oai 생성(오리지엔 대한 액세스 제한을 의미)
+OAI=$(aws cloudfront create-cloud-front-origin-access-identity --cloud-front-origin-access-identity-config CallerReference="awscookbook",Comment="awscookbook oai" --query CloudFrontOriginAccessIdentity.Id --output text)
+
+# sed 명령으로 distribution.json 파일 생성
+sed -e "s/CLOUDFRONT_OAI/${OAI}/g" -e "s|S3_BUCKET_NAME|aws110|g" distribution-configtemplate.json > distribution.json
+
+# cloudfront 배포 생성
+DISTRIBUTION_ID=$(aws cloudfront create-distribution --distribution-config file://distribution.json --query Distribution.Id --output text)
+
+# 배포가 deployed 상태인지 확인(계속 none 떠서 콘솔로 들어갔더니 활성화됨..)
+aws cloudfront get-distribution --id $DISTRIBUTION_ID --output text --query Distribution.status
+
+# bucket-policy.json 파일을 이용해 cloudfront 요청만 허용하도록 버킷 정책 구성
+sed -e "s/CLOUDFRONT_OAI/${OAI}/g" -e "s|S3_BUCKET_NAME|aws110|g" bucket-policy-template.json > bucket-policy.json
+
+aws s3api put-bucket-policy --bucket aws110 --policy file://bucket-policy.json
+
+# 생성한 배포의 domain_name 확인
+DOMAIN_NAME=$(aws cloudfront get-distribution --id $DISTRIBUTION_ID --query Distribution.DomainName --output text)
+
+# 요청
+curl $DOMAIN_NAME
+
+# 배포 삭제 과정
+aws cloudfront delete-distribution --id $DISTRIBUTION_ID --if-match $(aws cloudfront get-distribution --id $DISTRIBUTION_ID --query ETag --output text)
+
+aws cloudfront delete-cloud-front-origin-access-identity --id $OAI --if-match $(aws cloudfront get-cloud-front-origin-access-identity --id $OAI --query ETag --output text)
+```
+cloudfront의 cdn은 ddos공격으로부터 보호할 뿐만 아니라 최종 사용자에게 짧은 지연 시간으로 콘텐츠를 전달하는 기능을 제공. 또한 트래픽을 보호하고자 해당 배포의 기본 호스트 이름에 대한 https 인증서를 함게 제공. 
