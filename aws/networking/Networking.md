@@ -143,3 +143,110 @@ aws ec2 describe-network-insights-analyses \
 네트워크 연결을 네트워크 인사이트 경로로 정의해 테스트할 수 있음. 처음에는 ssh연결이 허용되지 않았기 때문에 나중에 보안그룹을 업데이트하고 나서 사용할 수 있음. VPC reachability analyzer는 인프라를 프로비저닝할 필요가 없기 때문에 서버리스 방식으로 네트워킁 문제 해결 및 구성의 유효성 검증을 위한 효율적인 도구.
 
 # 2.7 Application Load Balancer를 사용해 HTTP 트래픽을 HTTPS로 리디렉션
+``` bash
+ALB를 이용해서 HTTP로 오는 요청을 HTTPS로 리다이렉션하는 챕터.
+
+# 인증서에 사용할 새로운 개인 키 생성
+openssl genrsa 2048 > my-private-key.pem
+
+# openSSL cli를 사용해 자체 서명된 인증서 생성
+openssl req -new -x509 -nodes -sha256 -days 365 -key my-private-key.pem -outform PEM -out my-certificate.pem
+
+# 생성된 인증서를 IAM에 업로드
+CERT_ARN=$(aws iam upload-server-certificate --server-certificate-name aws207 --certificate-body file://my-certificate.pem --private-key file://my-private-key.pem --query ServerCertificateMetadata.Arn --output text)
+
+# ALB에 사용할 보안 그룹 생성
+ALB_SG_ID=$(aws ec2 create-security-group --group-name aws207sg --description "ALB Security Group" --vpc-id $VPC_ID --output text --query GroupId)
+
+# 보안 그룹에 HTTP 및 HTTPS 트래픽을 허용하는 규칙 추가
+aws ec2 authorize-security-group-ingress \
+   --protocol tcp --port 80 \
+   --cidr '0.0.0.0/0' \
+   --group-id $ALB_SG_ID
+aws ec2 authorize-security-group-ingress \
+   --protocol tcp --port 443 \
+   --cidr '0.0.0.0/0' \
+   --group-id $ALB_SG_ID
+
+# ALB에서 들어오는 트래픽을 허용하도록 컨테이너의 보안 그룹에 권한 부여
+aws ec2 authorize-security-group-ingress \
+   --protocol tcp --port 80 \
+   --source-group $ALB_SG_ID \
+   --group-id $APP_SG_ID #컨테이너 앱의 보안 그룹 id
+
+# 퍼블릭 서브넷에 ALB를 생성하고 이전에 생성한 보안 그룹 연결
+LOAD_BALANCER_ARN=$(aws elbv2 create-load-balancer --name aws207alb --subnets $VPC_PUBLIC_SUBNETS --security-groups $ALB_SG_ID --scheme internet-facing --output text --query LoadBalancers.LoadBalancerArn)
+
+# 로드 밸런서에 적용할 대상 그룹 생성
+TARGET_GROUP=$(aws elbv2 create-target-group --name aws208tg --vpc-id $VPC_ID --protocol HTTP --port 80 --target-type ip --query 'TargetGroups.TargetGroupArn')
+
+# 컨테이너 ip 확인
+TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER_NAME --output text --query taskArns)
+
+CONTAINER_IP=$(aws ecs describe-tasks --cluster $ECS_CLUSTER_NAME --task $TAKS_ARN --output text --query tasks[0].attachments[0].details[4 | cut -f 2])
+
+# 대상 그룹에 컨테이너를 등록
+aws elbv2 register-targets --targets Id=$CONTAINER_IP --target-group-arn $TARGET_GROUP
+
+# ALB에 인증서를 사용하고 트래픽을 대상 그룹으로 전달하는 리스너를 생성
+HTTPS_LISTENER_ARN=$(aws elbv2 create-listener --load-balancer-arn $LOAD_BALANCER_ARN --protocol HTTPS --port 443 certificates CertificateArn=$CERT_ARN --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP --output text --query Listeners[0].ListemerArm)
+
+# 포트 443의 리스너에 대한 규칙을 추가해 생성한 대상 그룹으로 트래픽 전달
+aws elbv2 create-rule --listener-arn $HTTPS_LISTENER_ARN --priority 10 --conditions '{"Field":"path-pattern","PathPatternConfig":{"Values":["/*"]}}' --actions Type=forward,TargetGroupArn=$TARGET_GROUP
+
+# 브라우저에 301응답을 보내서 모든 HTTP 트래픽에 대해 리다이렉션 생성
+aws elbv2 create-listener --load-balacner-arn $LOAD_BALANCER_ARN --protocol HTTP --port 80 --default-actions "Type=redirect,RedirectConfig={Protocol=HTTPS,Port=443,Host='#{host}',Query='#{query}',Path='/#{path}',StatusCode=HTTP_301}"
+
+# 대상의 상태 확인
+aws elbv2 describe-target-health --target-group-arn $TARGET_GROUP --query TargetHealthDescriptions[*].TargetHealth.State
+
+# 로드 밸런서의 URL 확인
+LOAD_BALANCER_DNS=$(aws elbv2 describe-load-balancers --name aws207alb --output text --query LoadBalancers[0].DNSName)
+echo $LOAD_BALANCER_DNS # 해당 도메인으로 curl 날리면 301코드를 확인할 수 있음.
+```
+ALB 같은 경우에는 7계층에서 작동하는 로드 밸런서로 연결된 대상 그룹의 구성원에 대해 상태 확인을 지속적으로 수행하고 트래픽을 라우팅할 애플리케이션의 정상적인 구성 요소도 감지. 이오ㅔ에도 네트워크 로드 밸런서, 게이트웨이 로드밸런서가 있음.
+
+# 2.8 접두사 목록을 활용한 보안 그룹의 CIDR 관리
+관리형 접두사 목록을 만들어서 보안 그룹에 연결해서 외부에서 접근 가능하도록 만드는 챕터.
+``` bash
+# 사전 작업
+VPC_ID=$(aws ec2 create-vpc --cidr-block 10.10.0.0/16 --tag-specifications 'ResourceType=vpc, Tags=[{Key=Name, Value=aws208}]' --output text --query Vpc.VpcId)
+SUBNET_ID_1=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.1.0/24 --availability-zone us-west-2a --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=aws202a}]' --output text --query Subnet.SubnetId)
+SUBNET_ID_2=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.2.0/24 --availability-zone us-west-2b --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=aws202b}]' --output text --query Subnet.SubnetId)
+ROUTE_TABLE_ID_1=$(aws ec2 create-route-table --vpc-id $VPC_ID --tag-specifications 'ResourceType=route-table, Tags=[{Key=Name,Value=aws208}]' --output text --query RouteTable.RouteTableId)
+ROUTE_TABLE_ID_2=$(aws ec2 create-route-table --vpc-id $VPC_ID --tag-specifications 'ResourceType=route-table, Tags=[{Key=Name,Value=aws208b}]' --output text --query RouteTable.RouteTableId)
+aws ec2 associate-route-table --route-table-id $ROUTE_TABLE_ID_1 --subnet-id $SUBNET_ID_1
+aws ec2 associate-route-table --route-table-id $ROUTE_TABLE_ID_2 --subnet-id $SUBNET_ID_2
+INET_GATEWAY_ID=$(aws ec2 create-internet-gateway --tag-specifications 'ResourceType=internet-gateway,Tags=[{Key=Name,Value=aws208}]' --output text --query InternetGateway.InternetGatewayId)
+# 게이트웨이 만들고 서브넷 연결 추가적으로 필요
+aws ec2 create-route --route-table-id $ROUTE_TABLE_ID_1 --destination-cidr-block 0.0.0.0/0 --gateway-id $INET_GATEWAY_ID
+aws ec2 create-route --route-table-id $ROUTE_TABLE_ID_2 --destination-cidr-block 0.0.0.0/0 --gateway-id $INET_GATEWAY_ID
+
+# aws ip 주소 범위를 가진 json 파일 다운로드
+
+# us-east-1 리전에서 amazon workspaces 게이트웨이 대한 CIDR 범위 목록 생성
+jq -r '.prefixes[] | select(.region=="us-east-1") | select(.service=="WORKSPACES_GATEWAYS") | .ip_prefix' < ip-ranges.json
+
+# amazon workspaces에 대한 ip 범위로 관리형 접두사 목록을 생성
+PREFIX_LIST_ID=$(aws ec2 create-managed-prefix-list --address-family IPv4 --max-entries 15 --prefix-list-name allowed-us-west-2-cidrs --output text --query "PrefixList.PrefixListId" --entries Cidr=44.234.54.0/23,Description=workspaces-us-east-1-cidr1 Cidr=54.244.46.0/23,Description=workspaces-us-east-1-cidr2)
+
+# 나의 public ipv4주소 확인
+MY_ID_4=$(curl myip4.com | tr -d ' ')
+
+# 내 아이피 관리형 접두사 목록에 추가
+aws ec2 modify-managed-prefix-list --prefix-list-id $PREFIX_LIST_ID --current-version 1 --add-entries Cidr=${MY_ID_4}/32,Description=my-workstation-ip
+
+# 인스턴스의 보안 그룹에 접두사 목록에 대한 tcp 80 액세스 허용하는 인바운드 규칙 추가
+aws ec2 authorize-security-group-ingress \
+   --group-id sg-00 --ip-permissions IpProtocol=tcp,FromPort=80,ToPort=80,PrefixListIds="[{Description=http-fromprefix-list,PrefixListId=$PREFIX_LIST_ID}]"
+
+aws ec2 authorize-security-group-ingress \
+   --group-id sg-01 --ip-permissions IpProtocol=tcp,FromPort=80,ToPort=80,PrefixListIds="[{Description=http-fromprefix-list,PrefixListId=$PREFIX_LIST_ID}]"
+
+# 관리형 접두사 목록이 사용되는 보안 그룹 확인
+aws ec2 get-managed-prefix-list-associations --prefix-list-id $PREFIX_LIST_ID
+
+# 인스턴스에 대한 테스트(안에 nginx 서버 설치해줬음.)
+curl -m 2 $INSTANCE_IP
+```
+보안 그룹을 업데이트하는 것보다 접두사 목록을 업데이트하는게 여러개의 보안 그룹을 관리할 때 효율적. 접두사 목록은 이전 버전으로 돌아가는 롤백도 제공..!
