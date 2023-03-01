@@ -250,3 +250,83 @@ aws ec2 get-managed-prefix-list-associations --prefix-list-id $PREFIX_LIST_ID
 curl -m 2 $INSTANCE_IP
 ```
 보안 그룹을 업데이트하는 것보다 접두사 목록을 업데이트하는게 여러개의 보안 그룹을 관리할 때 효율적. 접두사 목록은 이전 버전으로 돌아가는 롤백도 제공..!
+
+# 2.9 VPC 엔드포인트를 사용한 S3 접근
+
+``` bash
+# 먼저 기본적으로 vpc 와 subnet, 라우팅 테이블 생성 및 인스턴스, s3 버킷  생성
+
+# VPC에 게이트웨이 엔드포인트를 생성하고 그 엔드포인트를 라우팅 테이블과 연결
+END_POINT_ID=$(aws ec2 create-vpc-endpoint --vpc-id $VPC_ID --service-name com.amazonaws.$AWS_REGION.s3 --route-table-ids $RT_ID_1 $RT_ID_2 --query VpcEndpoint.VpcEndpointId --output text)
+
+# 특정 s3 버킷으로만 접근을 제한하는 엔드포인트 정책 파일 생성
+sed -e "s/S3BucketName/${BUCKET_NAME}/g" policy-template.json > policy.json
+
+# vpc의 엔드포인트 정책을 수정
+aws ec2 modify-vpc-endpoint --policy-document file://policy.json --vpc-endpoint-id $END_POINT_ID
+
+# 이후는 ec2에 연결해서 인스턴스의 메타데이터 값으로 리전 설정하고 버킷의 이름을 get하고 안의 파일을 복사해서 접근 가능한지 확인.
+```
+
+# 2.10 트랜짓 게이트웨이를 사용해 전이 라우팅 연결 활성화
+여러 개의 VPC의 라우팅 테이블의 트래픽을 트랜짓 게이트웨이로 보내도록 설정하고 그걸 NAT 게이트웨이와 연결된 vpc에 연결하면 하나의 vpc로만 인터넷에 노출시킬 수 있음.
+``` bash
+# 기본적으로 vpc3개와 각각에 프라이빗, 퍼블릭 서브넷 필요.
+
+# 트랜짓 게이트웨이 생성(파라미터 문제로 그냥 콘솔로 생성)
+TGW_ID=$(aws ec2 create-transit-gateway --description aws210 --options=AmazonSideAsn=65010,AutoAcceptSharedAttachments=enable,DefaultRouteTableAssociation=enable,DefaultRouteTablePropagation=enable,VpcEcmpSupport=enable,DnsSupport=enable --output text --query TransitGateway.TransitGatewayId)
+
+# vpc1에 전송 게이트웨이 연결 생성
+TGW_ATTACH_1=$(aws ec2 create-transit-gateway-vpc-attachment --transit-gateway-id $TGW_ID --vpc-id $VPC_ID_1 --subnet-ids $ATTACHMENT_SUBNETS_VPC_1 --query TransitGatewayVpcAttachment.TransitGatewayAttachmentId --output text)
+TGW_ATTACH_2=$(aws ec2 create-transit-gateway-vpc-attachment --transit-gateway-id $TGW_ID --vpc-id $VPC_ID_2 --subnet-ids $ATTACHMENT_SUBNETS_VPC_2 --query TransitGatewayVpcAttachment.TransitGatewayAttachmentId --output text)
+TGW_ATTACH_3=$(aws ec2 create-transit-gateway-vpc-attachment --transit-gateway-id $TGW_ID --vpc-id $VPC_ID_3 --subnet-ids $ATTACHMENT_SUBNETS_VPC_3 --query TransitGatewayVpcAttachment.TransitGatewayAttachmentId --output text)
+
+# vpc1, 3 의 모든 프라이빗 서브넷에 0.0.0.0/0에 대한 경로를 TGW를 대상으로 추가
+aws ec2 create-route --route-table-id $VPC_1_RT_ID_1 --destination-cidr-block 0.0.0.0/0 --transit-gateway-id $TGW_ID
+aws ec2 create-route --route-table-id $VPC_1_RT_ID_2 --destination-cidr-block 0.0.0.0/0 --transit-gateway-id $TGW_ID
+aws ec2 create-route --route-table-id $VPC_3_RT_ID_1 --destination-cidr-block 0.0.0.0/0 --transit-gateway-id $TGW_ID
+aws ec2 create-route --route-table-id $VPC_3_RT_ID_2 --destination-cidr-block 0.0.0.0/0 --transit-gateway-id $TGW_ID
+
+# vpc2의 프라이빗 서브넷의 라우팅 테이블에도 10.10.0.0/24 슈퍼넷에 대한 경로를 추가해 TGW를 가리키도록 설정.
+aws ec2 create-route --route-table-id $VPC_2_RT_ID_1 destination-cidr-block 10.10.0.0/24 --transit-gateway-id $TGW_ID
+aws ec2 create-route --route-table-id $VPC_2_RT_ID_2 destination-cidr-block 10.10.0.0/24 --transit-gateway-id $TGW_ID
+
+# NAT 게이트웨이 정보 가져오기
+NAT_GW_ID_1=$(aws ec2 describe-nat-gateways --filter "Name=subnet-id, Values=$VPC_2_PUBLIC_SUBNET_ID_1" --output text --query NatGateways[*].NatGatewayId)
+NAT_GW_ID_2=$(aws ec2 describe-nat-gateways --filter "Name=subnet-id, Values=$VPC_2_PUBLIC_SUBNET_ID_2" --output text --query NatGateways[*].NatGatewayId)
+
+# TGW의 인터넷 트래픽을 NAT 게이트웨이로 보내기 위해 vpc2의 서브넷에 경로 추가
+aws ec2 create-route --route-table-id $VPC_2_ATTACH_RT_ID_1 --destination-cidr-block 0.0.0.0/0 --nat-gateway-id $NAT_GW_ID_1
+aws ec2 create-route --route-table-id $VPC_2_ATTACH_RT_ID_2 --destination-cidr-block 0.0.0.0/0 --nat-gateway-id $NAT_GW_ID_2
+
+# vpc2의 퍼블릭 서브넷의 라우팅 테이블에 tgw를 추가해서 모든 vpc가 nat 게이트웨이를 공유할 수 있도록 함.
+aws ec2 create-route --route-table-id $VPC_2_PUBLIC_RT_ID_1 destination-cidr-block 10.10.0.0/24 --transit-gateway-id $TGW_ID
+aws ec2 create-route --route-table-id $VPC_2_PUBLIC_RT_ID_2 destination-cidr-block 10.10.0.0/24 --transit-gateway-id $TGW_ID
+
+# TGW의 라우팅 테이블의 id를 가져와서 vpc2로 경로 추가
+TRAN_GW_RT=$(aws ec2 describe-transit-gateways --transit-gateway-ids $TGW_ID --output text --query TransitGateways.Options.AssociationDefaultRouteTableId)
+
+aws ec2 create-transit-gateway-route --destination-cidr-block 0.0.0.0/0 --transit-gateway-route-table-id $TRAN_GW_RT --transit-gateway-attachment-id $TGW_ATTACH_2
+```
+
+# 2.11 VPC 간 네트워크 통신을 위한 VPC 피어링 적용
+``` bash
+# vpc1을 vpc2에 연결하는 vpc 피어링 연결 생성
+VPC_PEERING_CONNECTION=$(aws ec2 create-vpc-peering-connection --vpc-id $vpc_id_1 --peer-vpc-id $vpc_id_2 --output text --query VpcPeeringConnection.VpcPeeringConnectionId)
+
+# 피어링 연결 수락
+aws ec2 accept-vpc-peering-connection --vpc-peering-connection-id $VPC_PEERING_CONNECTION
+
+# 서브넷과 연결된 기본 라우팅 테이블에 피어링 vpc의 CIDR 범위로 향하는 트래픽을 vpc peering connection id로 보내는 경로로 추가
+aws ec2 create-route --route-table-id $vpc_subnet_rt_1 --destination-cidr-block 10.11.0.0/16 --vpc-peering-connection-id $VPC_PEERING_CONNECTION
+
+aws ec2 create-route --route-table-id $vpc_subnet_rt_2 --destination-cidr-block 10.10.0.0/16 --vpc-peering-connection-id $VPC_PEERING_CONNECTION
+
+# 인스턴스 1의 보안그룹의 icpmv4 액세스를 허용하는 규칙을 인스턴스2 보안 그룹에 추가
+aws ec2 authorize-security-group-ingress --protocol icmp --port -1 --source-group sg-0a1180cbee092570c --group-id sg-00bbe92fb0fe3f0ec
+# 해당 규칙 말고 전체로 해야 가는듯,,
+
+# 이후 인스턴스1에 접속해 인스턴스 2로 다음 명령을 날려서 테스트
+ping -c 4 $instance_ip
+```
+서로 다른 vpc 간의 통신을 위해서는 모든 vpc와 피어링 설정을 해야함. 그런데 vpc를 계속 추가하면 계속 피어링 설정을 해줘야하기 때문에 전이적 vpc 통신에는 앞서 사용했던 트랜짓 게이트웨이 아키텍쳐를 사용.
