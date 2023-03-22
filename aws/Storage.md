@@ -1,3 +1,4 @@
+# Storage
 
 # 3.1 S3 수명 주기 정책을 사용한 스토리지 비용 절감
 S3 스토리지 클래스에는 알 수 없거나 액세스 패턴이 변경되는 데이터에 대한 자동 비용 절감을 위한 S3 Intelligent-Tiering, 자주 액세스하는 데이터를 위한 S3 Standard, 자주 액세스하지 않는 데이터를 위한 S3 Standard-Infrequent Access(S3 Standard-IA) 및 S3 One Zone-Infrequent Access(S3 One Zone-IA), 즉각적인 액세스가 필요한 아카이브 데이터를 위한 S3 Glacier Instant Retrieval, 즉각적인 액세스가 필요하지 않고 거의 액세스하지 않는 장기 데이터를 위한 S3 Glacier Flexible Retrieval(이전 S3 Glacier), 클라우드에서 가장 저렴한 스토리지로 몇 시간 만에 검색 가능한 장기간 아카이브 및 디지털 보존을 위한 Amazon S3 Glacier Deep Archive(S3 Glacier Deep Archive)가 포함. <br>

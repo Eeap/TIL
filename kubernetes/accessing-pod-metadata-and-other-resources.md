@@ -1,4 +1,4 @@
-# 애플리케이션에서 파드 메타데이터와 그 외의 리소스에 액세스하기
+# Accessing pod metadata and other resources
 
 ## 8.1 Downward API로 메타데이터 전달
 파드의 metadata를 파드 내에서 실행 중인 프로세스인 애플리케이션(컨테이너)에 전달할 때 Downward API를 이용하거나 환경변수를 통해 전달할 수 있음. 보통 다음과 같은 정보를 컨테이너에 전달 </br>

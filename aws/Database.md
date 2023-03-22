@@ -1,3 +1,5 @@
+# Database
+
 # 4.1 Amazon Aurora Serverless PostgreSQL
 Amazon Aurora는 Aurora Serverless v2, 메모리 최적화 및 버스트 가능 성능이라는 3가지 DB 인스턴스 클래스 유형을 제공
 
