@@ -4,7 +4,7 @@
 Today I learned :sparkles:
 
 
-_9 TILs and counting..._
+_10 TILs and counting..._
 
 ---
 
@@ -14,6 +14,7 @@ _9 TILs and counting..._
 - [kubernetes](#kubernetes)
 
 ### [aws](#aws)
+- [Big Data](aws/BigData.md)
 - [Database](aws/Database.md)
 - [Networking](aws/Networking.md)
 - [Security](aws/Security.md)
