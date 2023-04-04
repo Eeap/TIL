@@ -36,3 +36,52 @@ copilot init --app web --name nginx --type 'Load Balanced Web Service' --dockerf
 codeDeploy는 ec2인스턴스나 lambda함수, ECS 서비스로 애플리케이션의 배포를 자동화하는 배포 서비스로서 s3버킷이나 깃헙에 있는 애플리케이션 컨텐츠를 배포할 수 있음. CodeDeploy는 lambda 또는 ECS에서 카나리, AllAtOnce, 블루/그린 등의 여러 가지 배포 전략을 지원. 블루/그린 전략은 모든 트래픽이 새 버전으로 라우팅되는 동안 이전 버전을 5분간 실행 상태로 유지하는데 그 이유는 새 버전이 잘 작동하지 않을 수도 있기 때문에 그럼.
 CodeDeploy는 ALB 대상 그룹을 사용해서 애플리케이션을 관리함.
 ```
+
+# 6.6 Amazon ECS의 컨테이너 워크로드 자동 확장
+``` bash
+auto scaling 기능은 ecs 서비스에서 원하는 작업 수를 늘리거나 줄이는 기능. 이때 auto scaling을 위해 application auto scaling 서비스를 활용하여 기능 제공. Amazon ECS는 서비스의 평균 cpu 및 메모리 사용량과 함께 cloudWatch 지표를 게시. 그래서 이 지표릴 이용하여 피크 시간에는 서비스를 확장하거나 사용률이 낮은 기간에는 서비스를 축소하여 비용절감.
+
+auto scaling 조정 정책은 대상 추적 조정 정책, 단계 조정 정책, 예약된 조정이 있는데 대상 추적의 경우 특정 지표에 대한 대상값을 기준으로 작업의 수를 조절하고 단계같은 경우 말 그대로 경보 위반의 단계를 조절해서 작업의 수를 조정하는 정책이고 예약된 조정은 날짜 및 시간을 기준으로 작업의 수를 조절하는 정책.
+
+이를 하기 위해서는 IAM 권한이 필요.
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "application-autoscaling:*",
+        "ecs:DescribeServices",
+        "ecs:UpdateService",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:DescribeAlarmHistory",
+        "cloudwatch:DescribeAlarmsForMetric",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:DisableAlarmActions",
+        "cloudwatch:EnableAlarmActions",
+        "iam:CreateServiceLinkedRole",
+        "sns:CreateTopic",
+        "sns:Subscribe",
+        "sns:Get*",
+        "sns:List*"
+      ],
+      "Resource": [
+        "*"
+      ]
+    }
+  ]
+}
+
+콘솔에서는 서비스를 만들 때 서비스 자동 크기 조정이 선택사항으로 존재하고 대상 추적으로 태스크 수나 지표값을 정할 수 있음.
+```
+
+# 6.7 이벤트를 통해 Fargate 컨테이너 작업 시작
+``` bash
+이번꺼는 블로그에 올려서 블로그 대체!
+https://suminn0.tistory.com/150
+```
+
+# 6.8 
