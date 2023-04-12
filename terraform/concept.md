@@ -31,3 +31,43 @@ terraform은 plan을 생성하고 인프라를 수정하기 전에 apply를 요�
 ## 구성 표준화
 
 테라폼은 구성 가능한 인프라 컬렉션을 정의하는 module이라는 재사용 가능한 구성 요소를 지원한다. 테라폼 레지스트리에서 공개적으로 사용 가능한 모듈을 사용하거나 직접 작성할 수 있다.
+
+
+테라폼 코드는 확장자가 .tf인 HCL로 작성되고 HCL은 선언적 언어이므로 원하는 인프라를 설명하기 위해서 코드를 작성해야한다.
+코드의 형식은 다음과 같다.
+``` HCL
+resource "<PROVIDER>_<TYPE>" "<NAME>" {
+    [CONFIG..]
+}
+```
+
+예를 들어 ec2 인스턴스를 배포하려고 한다면 다음과 같은 코드를 작성하면 된다.
+```HCL
+resource "aws_instance" "example" {
+  ami           = "ami-830c94e3"
+  instance_type = "t2.micro"
+}
+```
+여기서 ami는 ec2인스턴스를 생성하는 아마존 머신 이미지의 약자이고 aws 마켓플레이스에서 무료 및 유료 ami를 찾거나 직접 ami를 생성할 수 있다.
+instance_type은 실행할 instance의 유형이고 ec2의 인스턴스 타입은 리소스에 따라 여러 유형이 존재한다.
+
+main.tf에 위와 같은 코드를 작성한 다음 terraform init을 실행해서 테라폼에 코드를 스캔하도록 지시하고 어느 공급자인지 확인하고 필요한 코드를 다운받도록 해야한다. 기본적으로 테라폼 코드는 테라폼의 .terraform 폴더에 다운로드된다.
+
+terraform plan 명령어를 사용하면 실제로 변경되기 전에 테라폼이 수행할 작업을 확인할 수 있고 실제 운영 환경에서 적영하기 전에 코드의 온전성을 검사할 수 있는 좋은 방법이다. 기본적으로 + 표시는 추가, - 표시는 삭제, ~ 표시는 수정을 의미한다.
+
+그 다음 terraform apply를 입력하면 plan과 똑같은 결과값이 나오고 이 plan을 진행할 것인지 확인하라는 메시지를 출력한다. yes를 입력하면 ec2하나가 배포되는 것을 콘솔을 통해 확인할 수 있다.
+
+ec2 instance의 config에는 위에 옵션 말고 tag나 다른 것도 추가가 가능하다.
+```HCL
+resource "aws_instance" "example" {
+  ami = "ami-830c94e3"
+  instance_type = "t2.micro"
+
+  tags = {
+    Name = "terraform-example"
+  }
+}
+```
+위와 같은 내용으로 다시 terraform apply 명령어를 실행하면 테라폼은 구성 파일을 위해 생성된 모든 리소스를 추적하므로 ec2 인스턴스가 이미 존재한다는 것을 알고 있기 때문에 refreshing state라는 메시지가 뜨게 되고 실제 콘솔 창도 들어가면 Name값만 변경된 것을 확인할 수 있다.
+
+*.tfstate파일은 테라폼이 상태를 저장하는데 사용하고 여기에는 리소스에 대한 정보도 포함하고 있기 때문에(유저 정보도 포함) gitignore에 반드시 추가해줘야한다.
