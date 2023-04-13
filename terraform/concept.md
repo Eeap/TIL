@@ -71,3 +71,32 @@ resource "aws_instance" "example" {
 위와 같은 내용으로 다시 terraform apply 명령어를 실행하면 테라폼은 구성 파일을 위해 생성된 모든 리소스를 추적하므로 ec2 인스턴스가 이미 존재한다는 것을 알고 있기 때문에 refreshing state라는 메시지가 뜨게 되고 실제 콘솔 창도 들어가면 Name값만 변경된 것을 확인할 수 있다.
 
 *.tfstate파일은 테라폼이 상태를 저장하는데 사용하고 여기에는 리소스에 대한 정보도 포함하고 있기 때문에(유저 정보도 포함) gitignore에 반드시 추가해줘야한다.
+
+user_data를 설정하면 스크립트를 실행할 수도 있다. 여기서 <<-EOF 및 EOF는 heredoc 구문을 이용해 줄 바꿈 문자를 삽입하지 않고도 여러 줄로 된 코드를 작성할 수 있다. 그리고 웹 서버에 접근하기 위해선 해당 포트에 대한 인바운드 규칙을 수정해서 트래픽을 받아들여야하는데 아래처럼 security group을 생성해서 설정할 수 있다. CIDR 블록을 0.0.0.0/0으로 설정하면 8080포트로 오는 모든 요청에 대해 수용함을 의미한다. 또한, 보안 그룹을 ec2에 설정을 해야하고 참조 표현식을 이용해서 종속성을 작성할 수 있고 이러한 종속성 구문을 테라폼이 알아서 분석해서 종속성 그패를 작성하여 리소스 생성 순서를 자동으로 결정한다.(표현식 -> <PROVIDER>_<TYPE>.<NAME>.<ATTRIBUTE>). 종속성 그래프는 `$ terraform graph`라는 명령어를 통해 볼 수 있다.
+```HCL
+resource "aws_instance" "example" {
+  ami = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
+  vpc_security_group_ids = [aws_security_group.example_sg.id]
+
+  user_data = <<-EOF
+                #!/bin/bash
+                echo "Hello, World!" > index.html
+                nohup busybox httpd -f -p 8080 &
+                EOF
+  tags = {
+    Name = "terraform-example"
+  }
+}
+
+resource "aws_security_group" "example_sg" {
+    name = "terraform-example-instance"
+
+    ingress {
+      cidr_blocks = [ "0.0.0.0/0" ]
+      from_port = 8080
+      protocol = "tcp"
+      to_port = 8080
+    } 
+}
+```
