@@ -382,4 +382,55 @@ terraform {
   - iam
   - s3
 
-하지만 이렇게 파일 레이아웃을 분리하다보면 속성 참조가 어렵다는 점이 있는데 그대는 이제 terraform_remote_state 데이터 소스를 이용하면 된다.
+하지만 이렇게 파일 레이아웃을 분리하다보면 속성 참조가 어렵다는 점이 있는데 그대는 이제 terraform_remote_state 데이터 소스를 이용하면 된다. 이 데이터 소스를 사용하면 다른 테라폼 구성 세트에 완전한 읽기 전용 방식으로 저장된 테라폼 상태를 가져올 수 있다.
+##### m1에서 init 시 template package가 없다는 에러가 뜰 경우 아래 명령어 입력
+```bash
+brew install kreuzwerker/taps/m1-terraform-provider-helper
+m1-terraform-provider-helper activate
+m1-terraform-provider-helper install hashicorp/template -v v2.2.0
+```
+
+먼저 기존의 s3와 ASG,ALB를 배포 해준다.(이때 s3 백엔드를 각각 추가) 그 다음 db의 데이터가 실제로 다른 파일에서 읽을 수 있는지 테스트 해본다.
+mysql 폴더에 main.tf에 다음과 같은 코드를 넣어준다.
+```HCL
+resource "aws_db_instance" "example" {
+  identifier_prefix = "terraform-example-db"
+  engine = "mysql"
+  allocated_storage = 10
+  instance_class = "db.t2.micro"
+  db_name = "exampleDb"
+  username = "admin"
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = aws_kms_key.example.key_id
+  skip_final_snapshot = true
+}
+resource "aws_kms_key" "example" {
+  description = "mysql KMS Key"
+}
+```
+책에서는 password를 설정하는 방법을 secrets manager에 키값을 저장해놓고 갖고오는 방식과 외부 환경 변수를 통해 갖고오는 방식 둘다 보여줬는데 기존은 secrets manager에 키를 만들지 않고 공식 문서에 나와있는대로 master 패스워드를 kms를 생성해서 secrets manager가 관리하는 방식을 선택했다.(https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/db_instance#delete)
+<br><br>
+
+또 다른 방법으로는 variables.tf에 dp_password라는 변수를 만들고 `export TF_VAR_db_password="(pass password)"`라는 명령어로 저장한다음 apply를 하면 패스워드를 외부 환경변수로부터 얻어서 사용할 수 있다.
+<br><br>
+
+데이터베이스쪽에서 백엔드를 이용해서 상태 정보를 s3에서 저장하고 있어서 이걸 다시 불러오도록 하기 위해선 terraform_remote_state를 사용하면 된다. 그리고 배쉬 스크립트가 길어지면 가독성이 떨어지기 때문에 이걸 외부화하면 더 편리하게 구성의 정의할 수 있다.(내장 함수와 template_file 데이터 소스를 이용)
+```HCL
+data "terraform_remote_state" "db" {
+  backend = "s3"
+  config = {
+    bucket = "terraform-example-s3-sumin"
+    key = "stage/data-stores/mysql/terraform.tfstate"
+    region = "us-east-2"
+   }
+}
+data "template_file" "user_data" {
+  template = file("user-data.sh")
+
+  vars = {
+    server_port = var.server_port
+    db_address = data.terraform_remote_state.db.outputs.address
+    db_port = data.terraform_remote_state.db.outputs.port
+  }
+}
+```
