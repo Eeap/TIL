@@ -434,3 +434,137 @@ data "template_file" "user_data" {
   }
 }
 ```
+
+### 테라폼 모듈
+위에 stage 환경과 prod환경에서는 동일한 코드를 사용하고 있고 이 코드들은 불필요하게 반복되고 있다. 그래서 이 코드들을 모듈로 만들어서 실제로 stage와 prod에서는 모듈을 호출해서 사용할 수 있도록 하면 코드의 재사용성을 높일 수 있다.
+
+모듈의 파일 구조는 기존에 있던 파일 구조를 그대로 따라가면 된다.
+
+- modules
+  - services
+    - webserver-cluster
+      - main.tf
+      - outputs.tf
+      - user-data.sh
+      - variables.tf
+
+그리고 기존의 stage 코드는 다음과 같이 바꿔주면 된다.(아래는 하드 코딩된 부분을 variable로 바꿔서 적용한 부분이라 상이할 수 있음.)
+```HCL
+module "webserver_cluster" {
+  source = "../../../modules/services/webserver-cluster/services/webserver-cluster"
+  db_remote_state_bucket = "terraform-example-s3-sumin"
+  db_db_remote_state_key = "stage/data-stores/mysql/terraform.tfstate"
+  cluster_name = "webserver-stage"
+  min_size = 2
+  max_size = 2
+  instance_type = "t2.micro"
+}
+```
+이전 코드는 보안 그룹 이름이나 등등이 다 하드코딩되어 있어서 만약 모듈을 두번 실행하게 되면 중첩되는 오류가 발생해서 하드 코딩된 부분을 variable로 분리하고 variable에 있는 내용을 위와 같이 모듈을 사용하는 부분에서 입력을 받을 수 있도록 해야한다.
+```HCL
+variable "cluster_name" {
+  description = "To use for all cluster resources"
+  type = string
+}
+variable "db_remote_state_bucket" {
+  description = "S3 bucket for the database's remote state"
+  type = string
+}
+variable "db_remote_state_key" {
+  description = "The path for the db remote state in S3"
+  type = string
+}
+variable "instance_type" {
+  description = "EC2 instances to run"
+  type = string
+}
+variable "min_size" {
+  description = "minimum number of EC2 instances in the ASG"
+  type = number
+}
+variable "max_size" {
+  description = "maximum number of EC2 instances in the ASG"
+  type = number
+}
+```
+이제 module 코드에서 하드코딩되어 있던 부분을 var.변수명으로 다 치환을 하면 된다. 위의 방식처럼 만약 module에서 따로 입력을 받을 필요가 있는 변수들이 있다면 module의 variable을 이용헤서 선언하면 되고 stage환경이나 prod환경에서 모듈을 사용할때 입력 변수로 대입해주면 된다. 하지만 이 모듈 내에서만 쓰고 모듈을 사용하는 쪽에서 구성 가능한 입력 변수로 노출하고 싶지 않은 경우가 있는데 이럴 때는 `local 변수`를 사용하면 된다.
+
+```HCL
+아래 코드는 module의 main.tf에 추가해주면 되고 하드코딩된 부분을 아래처럼 수정해주면 된다.
+locals {
+  http_port = 80
+  any_port = 0
+  any_protocol = "-1"
+  tcp_protocol = "tcp"
+  all_ips = ["0.0.0.0/0"]
+}
+resource "aws_security_group_rule" "all_outbound" {
+  type = "engress"
+  security_group_id = aws_security_group.lb_example_sg.id
+  cidr_blocks = local.all_ips
+  from_port = local.any_port
+  protocol = local.any_protocol
+  to_port = local.any_port
+}
+```
+
+prod 환경의 경우 특정 시간에는 트래픽이 평균적으로 많고 특정 시간이 지나면 트래픽이 평균적으로 낮아지는데 이럴때 autoscaling_schedule 리소스를 이용하면 된다.
+```HCL
+아래 시간은 cron에 등록하는 시간과 동일하며 순서대로 분 시 일 월 년 순이고 아래의 코드는 사용하는 prod의 main.tf에 추가해주면 된다. module.webserver_cluster.asg_name
+이 부분은 module에서 output.tf에서 선언해준 것을 이용하면 된다.
+resource "aws_autoscaling_schedule" "scale_out_during_business_hours" {
+  scheduled_action_name = "scale-out-during-business-hours"
+  min_size = 2
+  max_size = 10
+  desired_capacity = 10
+  recurrence = "0 9 * * *"
+  autoscaling_group_name = module.webserver_cluster.asg_name
+}
+resource "aws_autoscaling_schedule" "scale_in_at_night" {
+  scheduled_action_name = "scale-in-at-night"
+  min_size = 2
+  max_size = 10
+  desired_capacity = 2
+  recurrence = "0 17 * * *"
+  autoscaling_group_name = module.webserver_cluster.asg_name
+}
+```
+
+모듈에서 주의해야할 점 중 하나는 파일 경로이다. 모듈에서 file 함수를 사용할 때는 파일 경로를 상대 경로를 사용해야 한다.
+테라폼이 제공하는 파일 유형 타입은 총 세가지이다.(https://developer.hashicorp.com/terraform/language/expressions/references#filesystem-and-workspace-info)
+- path.module : 표현식이 정의된 모듈의 파일 시스템 경로를 반환. 하지만 이건 외부 모듈인지 로컬 모듈인지에 따라 다른 동작이 되기 때문에 쓰기 작업엔 사용하지 않는게 좋다.
+- path.root : 루트 모듈의 파일 시스템 경로를 반환.
+- path.cwd : 현재 작업 중인 디렉토리의 파일 시스템 경로를 반환. 일반적으로 path.root와 동일하지만 이외의 다른 디렉토리를 쓸 때는 경로가 달라진다.
+
+또한, 리소스 구성을 인라인 블록으로 하기보단 별도의 리소스로 구분하는게 좋은데 그 이유는 모듈의 유연성을 위해서이다. 예를 들어 현재 구현한 보안그룹 규칙을 ingress랑 engress를 하나의 리소스에 작성했는데 아래처럼 분리하면 모듈의 유연성을 확보할 수 있다.
+```HCL
+resource "aws_security_group_rule" "http_inbound" {
+  type = "ingress"
+  security_group_id = aws_security_group.lb_example_sg.id
+  cidr_blocks = local.all_ips
+  from_port = local.http_port
+  protocol = local.tcp_protocol
+  to_port = local.http_port
+}
+resource "aws_security_group_rule" "all_outbound" {
+  type = "engress"
+  security_group_id = aws_security_group.lb_example_sg.id
+  cidr_blocks = local.all_ips
+  from_port = local.any_port
+  protocol = local.any_protocol
+  to_port = local.any_port
+}
+```
+
+그리고 git같은 걸 이용해서 모듈의 버전 관리도 하면 인프라 구성이 잘못되었을 경우 이전 버전으로 롤백하거나 그럴 수 있다. 또한, 모듈을 사용할 때 source에 url을 이용해서도 사용이 가능하고 ref통해 버전 관리도 가능하다.(tag이용)
+```HCL
+module "webserver_cluster" {
+  source = "github.com/brikis98/terraform-up-and-running-code//code/terraform/04-terraform-module/module-example/modules/services/webserver-cluster?ref=v0.1.0"
+  db_remote_state_bucket = "terraform-example-s3-sumin"
+  db_db_remote_state_key = "prod/data-stores/mysql/terraform.tfstate"
+  cluster_name = "webserver-prod"
+  min_size = 2
+  max_size = 10
+  instance_type = "m4.large"
+}
+```
