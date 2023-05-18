@@ -271,3 +271,79 @@ func main() {
 슬라이스는 내부적으로 배열의 부분 영역인 세그먼트에 대한 정보를 가지고 있다. 슬라이스는 3개의 필드로 구성되어 있는데 첫번째 필드는 배열에 대한 포인터 정보이고 두번째 필드는 length, 세번째는 capacity 정보가 있다. 길이와 용량을 지정해서 선언하면 용량만큼 배열이 만들어지고 슬라이스 첫번째 필드인 포인터는 배열의 첫번째 요소를 가리키게 된다.
 
 #### Map
+맵은 흔히 쓰이는 key value형 해시테이블을 구현한 자료구조이다. go에서는 `map[key타입]value타입` 이런식으로 선언해서 사용한다. 아래처럼 mapTest의 경우 nil 값을 가지게 되며 Nil Map이라고 부른다. Nil map에는 어떤 데이터도 쓸 수 없으며 panic에러가 뜨게 된다. `panic: assignment to entry in nil map` map을 초기화하기 위해서는 make함수를 사용할 수 있다. 이제 데이터를 넣으면 잘 출력이 되는 걸 확인할 수 있다. make 함수는 해시테이블 자료구조를 메모리에 생성하고 그 메모리를 가리키는 map value를 리턴하게 된다. 따라서 mapTest는 hashTable을 가리키는 map을 가리키게 되는 구조이다..!
+
+그리고 아래처럼 리터럴을 사용해서 초기화할 수도 있다. (이때 마지막에 ,찍는거 잊지 않기!!) 값을 읽을때는 보통 다른 언어처럼 `변수명[key값]`이고 만약 값이 없다면 nil이나 zero가 리턴된다. 그리고 삭제할때도 delete라는 함수를 써서 변수명과 key값을 같이 주면 쉽게 삭제할 수 있다.
+```go
+func main() {
+	var mapTest map[int]string
+	fmt.Println(mapTest)
+	mapTest = make(map[int]string)
+	mapTest[1] = "test"
+	fmt.Println(mapTest)
+	target := map[string]string{
+		"id":   "test",
+		"name": "test1",
+	}
+	fmt.Println(target)
+	delete(target,"id")
+}
+```
+Map 키가 존재하는 체크하는 방법도 존재! 아래처럼 value와 존재 여부에 대한 exists를 받아서 확인할 수 있다.
+```go
+func main() {
+	target := map[string]string{
+		"id":   "test",
+		"name": "test1",
+	}
+	value, exists := target["id"]
+	if !exists {
+		fmt.Println("No id value")
+	}
+	fmt.Println(value)
+}
+```
+그리고 key, value를 for문으로 가져오는 방법도 있는데 이건 이전의 for문이 idx,val을 가져왔던 방법이랑 똑같다. 여기서 idx가 단순히 key로 바뀐거라고 생각하면 이해하기 편하다.
+```go
+func main() {
+	target := map[string]string{
+		"id":   "test",
+		"name": "test1",
+	}
+	for key, val := range target {
+		fmt.Println(key, val)
+	}
+}
+```
+
+### Package
+Go에서는 패키지를 통해 코드의 모듈화나 코드의 재사용 기능을 제공. 그래서 패키지를 사용해서 작은 단위의 컴포넌트를 작성하고 이러한 패키지들을 활용해서 프로그램을 작성한다. go는 개발에 필요한 패키지들을 표준 라이브러리로 제공! 표준 라이브러리 패키지들은 GOROOT/pkg안에 존재한다. GOROOT 환경변수는 Go 설치 디렉토리를 가라키는데 이 부분은 자동으로 설치시 추가된다. [standard package](https://pkg.go.dev/std)
+Go compiler는 main 패키지 안의 main함수를 프로그램의 시작점인 엔트리 포인트로 인식한다. 다른 패키지를 사용할 때는 import를 이용해서 사용하면 된다. 이전에 fmt같은 패키지를 사용했는데 그것처럼 하면 된다.
+go에서는 표준인 경우에는 앞서 말한 것처럼 GOROOT/pkg에서 찾지만 사용자 패키지나 3rd party 패키지의 경우엔 GOPATH/pkg에서 패키지를 찾는다. GOPATH 같은 경우는 사용자가 지정해주어야 한다.
+<br>
+패키지 내에는 함수, struct, 인터페이스 등이 존재하는데 이들의 이름의 첫문자가 대문자로 시작하면 public으로 인식되고 소문자로 시작하면 non-public이 된다. public 같은 경우엔 흔히 알듯이 외부에서 호출해서 사용이 가능하고 non-public 같은 경우엔 패키지 내부에서만 사용이 가능하다. 
+<br>
+패키지 실행시 처음으로 호출되는 부분은 init 함수를 작성하면 자동으로 호출되도록 할 수 있다.
+```go
+package test
+
+var mapTest map[string]string
+
+func init() {
+	mapTest = make(map[string]string)
+}
+
+//init 함수만 호출하고자 하는 경우에는 _라는 alias를 지정하면 된다.
+import _ "ex/testLib"
+// 패키지 이름이 동일해도 alias를 사용해서 구분 가능!
+import (
+	mongo "ex/mongo/db"
+	mysql "ex/mysql/db"
+)
+func test() {
+	mondb := mongo.get()
+	mysql := mysql.get()
+}
+```
+
+사용자 정의 패키지 같은 경우 src 폴더 아래 폴더를 만든 후(패키지 이름과 동일한) 거기에 .go파일들을 만들어 구성한다. 그렇게 되면 하나의 서브 폴더 안에 있는 go 파일들은 동일한 패키지명을 갖게 된다. 추가적으로 사이즈가 큰 라이브러리 같은 경우 `go install` 이라는 명령을 통해서 라이브러리를 컴파일하여 cache할 수 있다. 이렇게 하면 빌드 타입을 크게 줄일 수 있다. (이 부분은 c언어를 생각하면 편할 것 같다. c에서도 라이브러리를 만들면 .a 파일로 만들어지는데 go에서도 go install을 하면 라이브러리를 .a파일로 만들어서 pkg에 보관하는 것 같다..!)
