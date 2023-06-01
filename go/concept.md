@@ -347,3 +347,49 @@ func test() {
 ```
 
 사용자 정의 패키지 같은 경우 src 폴더 아래 폴더를 만든 후(패키지 이름과 동일한) 거기에 .go파일들을 만들어 구성한다. 그렇게 되면 하나의 서브 폴더 안에 있는 go 파일들은 동일한 패키지명을 갖게 된다. 추가적으로 사이즈가 큰 라이브러리 같은 경우 `go install` 이라는 명령을 통해서 라이브러리를 컴파일하여 cache할 수 있다. 이렇게 하면 빌드 타입을 크게 줄일 수 있다. (이 부분은 c언어를 생각하면 편할 것 같다. c에서도 라이브러리를 만들면 .a 파일로 만들어지는데 go에서도 go install을 하면 라이브러리를 .a파일로 만들어서 pkg에 보관하는 것 같다..!)
+
+### Struct
+go에서는 struct는 custom data type을 표현하는데 사용 그래서 필드 데이터만 갖고 메소드는 갖지 않는다. struct를 정의하기 위해서는 type문을 사용한다.
+```go
+type person struct {
+	name string
+	age  int
+}
+
+func main() {
+	p := person{}
+	p.name = "Kim"
+	p.age = 26
+	fmt.Println(p)
+}
+```
+위처럼 빈 객체를 할당해서 dot을 이용해서 필드값을 채워넣는 방법도 있고 괄호 안에 값을 넣어서 할당하는 방법이 있다. 아래에서 p2의 경우엔 일부 필드가 생략됐을 때 해당 값은 zeron value를 갖게 된다.
+```go
+	var p1 person
+	p1 = person{"kim",25}
+	p2 := person{name: "k", age: 24}
+```
+또 다른 객체 생성 방법으로는 new메소드가 있다. new를 사용하면 모든 필드를 zero value로 초기화하게 되고 해당 객체의 포인터를 리턴하게 된다. c와 달리는 go는 객체 포인터인 경우에도 dot을 사용해서 데이터에 접근한다.(포인터가 자동으로 Dereference되기 때문?!)
+```go
+	p3 := new(person)
+	p.name = "kim"
+```
+struct 같은 경우도 struct 개체를 다른 함수의 파라미터로 넘길 경우 포인터를 전달하면 된다.
+```go
+type person struct {
+	name map[int]string
+}
+
+func newStruct() *person {
+	temp := person{}
+	temp.name = map[int]string{}
+	return &temp
+}
+
+func main() {
+	p := newStruct()
+	p.name[1] = "Kim"
+	fmt.Println(p)
+}
+
+```
