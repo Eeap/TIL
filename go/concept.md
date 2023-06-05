@@ -417,7 +417,7 @@ func main() {
 ```
 위처럼 Rect라는 struct에 rectangle이라는 메소드를 정의해서 사용할 수 있는데 함수명 앞에는 receiver라고 불리고 메소드가 속한 struct 타입과 struct 변수명을 지정하게 된다. 그래서 위에서는 r을 변수로 사용해서 함수 내부에서 입력 파라미터처럼 사용할 수 있다.
 <br>
-receiver의 종류는 value형과 pointer형이 있다. value receiver는 struct의 데이터를 복사하면 전달하고 pointer receiver는 struct의 포인터만을 전달한다. 따라서 value 같은 경우는 필드값이 변경되더라도 호출된 데이터는 변경되지 않고 포인터는 반대로 그대로 반영되게 된다.
+receiver의 종류는 value형과 pointer형이 있다. value receiver는 struct의 데이터를 복사하면 전달하고 pointer receiver는 struct의 포인터만을 전달한다. 따라서 value 같은 경우는 필드값이 변경되더라도 호출된 데이터는 변경되지 않고 포인터는 반대로 그대로 반영되게 된다. 그리고
 ```go
 package main
 
@@ -443,3 +443,68 @@ func main() {
 ```
 
 ### interface
+인터페이스는 method들의 집합체이며 type이 구현해야 하는 메소드 prototype들을 정의한다. 인터페이스를 구현하기 위해서는 해당 타입이 그 인터페이스의 메소드들을 모두 구현하면 되는데 아래는 예로 들면 Shape이라는 인터페이스를 구현하기 위해서 Rect와 Circle이라는 type이 Shape의 메소드들을 아래처럼 모두 구현하면 된다. 아래 allArea처럼 입력 파라미터를 인터페이스를 구현한 타입 객체들을 받는 경우 해당 객체가 인터페이스를 구현(메소드를 전부 정의)하기만 하면 사용될 수 있다.
+
+```go
+package main
+
+import (
+	"fmt"
+	"math"
+)
+
+type Shape interface {
+	area() float64
+	perimeter() float64
+}
+type Rect struct {
+	width, height float64
+}
+type Circle struct {
+	radius float64
+}
+
+func (r Rect) area() float64 {
+	return r.width * r.height
+}
+func (r Rect) perimeter() float64 {
+	return 2 * (r.width + r.height)
+}
+func (c Circle) area() float64 {
+	return math.Pi * c.radius * c.radius
+}
+func (c Circle) perimeter() float64 {
+	return 2 * math.Pi * c.radius
+}
+func main() {
+	rect := Rect{10., 20.}
+	circle := Circle{10}
+	allArea(rect, circle)
+}
+func allArea(shapes ...Shape) {
+	for _, s := range shapes {
+		fmt.Println(s.area())
+	}
+}
+```
+go에서는 empty interface도 존재하는데 이러한 interface는 `interface{}`로 표현된다. 빈 인터페이스는 0개의 메소드를 구현하기 때문에 모든 Type을 나타낼 경우 사용하게 된다. 즉, Dynamic Type이라고도 부르고 아래처럼 정수형을 담았다가 문자열을 담았다가 해도 에러 없이 잘 동작이 되고 마지막에 담은 내용을 출력한다.
+```go
+func main() {
+	var x interface{}
+	x = 1
+	x = "Kim"
+	fmt.Println(x)
+}
+```
+go에서는 빈 인터페이스의 type을 assertion해서 사용할 수 있다. 이런 경우에는 뒤에서 따로 명시한 Type과 일치할 경우엔 해당 값을 리턴하고 아닐 경우에는 error가 발생하게 된다.
+```go
+package main
+import (
+	"fmt"
+)
+func main() {
+	var x interface{} = "string"
+	i := x.(string)
+	fmt.Println(i)
+}
+```
