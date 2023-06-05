@@ -13,7 +13,8 @@ go build를 하면 exe 실행파일로 만들어주고 go run하면 실행!! 예
 go를 실습해보기 위해선 goland를 이용했고(학생은 jetbrain 무료라서 이용)
 
 기본적으로 변수 선언과 데이터 타입에 대해 공부를 시작했다
-### variables
+## variables
+
 ``` go
 package main
 
@@ -35,7 +36,7 @@ Float 및 복소수 타입float32 float64 complex64 complex128
 기타 타입  => byte: uint8과 동일하며 바이트 코드에 사용  /   rune: int32과 동일하며 유니코드 코드포인트에 사용한다
 
 ---
-### condition
+## condition
 
 그리고 go는 조건식에도 다른 언어의 for문처럼 문장식으로 사용할 수 있다.
 ``` go
@@ -59,7 +60,7 @@ func main() {
 }
 ```
 ---
-### loop
+## loop
 
 go에서는 여러개의 string 가변파라미터 ...을 사용해서 받을 수도 있다.
 
@@ -90,7 +91,7 @@ func passByRef(msg *string) {
 ```
 
 ---
-### functions
+## functions
 
 아래처럼 return 값의 형식을 파라미터 뒤에 정의해줘서 사용할 수 있다. 위처럼 복수 개의 return 도 가능! 또한, Named Return Parameter라는 것도 존재하는데 이 방법은 리턴값들을 할당하여 리턴하는 방법이다. 마지막처럼 미리 리턴 타입 정의 부분에 파라미터명을 정의하고 마지막에 return 문만 써주면된다.
 ```go
@@ -168,7 +169,7 @@ func calc(f minus, a int, b int) int {
 }
 ```
 ---
-### closure
+## closure
 go 언어에서 함수는 closure로서도 사용이 가능한데 closure란 함수 바깥에 있는 변수를 참조하는 함수값을 말한다. 아래 코드처럼 nextValue함수는 익명함수를 리턴하고 그 함수는 또 int를 리턴하는 형태이다. 여기서 익명함수가 바깥에 있는 idx를 참조하게 되고 그 값을 하나 증가시키고 반환하게 된다. 그런데 여기서 신기한게 idx가 로컬 변수로 선언된것처럼 보이지만 사실상 next를 두번 호출하면 idx값이 그대로 계속 증가하게 된다. 이유는 익명함수 자체가 로컬 변수 idx를 갖게는 아니라 참조를 하게 되므로 idx의 값이 유지되게 되는 것 같다. 그래서 새로 다른 변수에 함수를 할당하고 실행하면 idx가 새로운 메모리에 만들어지고 그 변수는 그 새로 만들어진 idx만 참조하기 때문에 이전에 있던 next를 호출하면 이전에 참조하던 idx 값이 증가하게 된다.
 ```go
 package main
@@ -196,10 +197,10 @@ func main() {
 
 ```
 ---
-### collection
+## collection
 
-#### array
-배열은 java랑 비슷한 것 같고 다른 언어랑 대체적으로 비슷한 것 같다.
+### array
+배열은 java랑 비슷한 것 같고 다른 언어랑 대체적으로 비슷
 
 ```go
 package main
@@ -215,7 +216,7 @@ func main() {
 }
 ```
 
-#### slice
+### slice
 go에서 배열은 배열의 크기를 동적으로 증가시키거나 부분 배열을 substr하는 기능을 가지고 있지 않기 때문에 slice라는 기능을 사용해야한다. go Slice는 배열의 크기를 미리 지정하지 않고 추후 그 크기를 동적으로 조절할 수 있고 부분 배열을 substr하는 기능을 가지고 있다.
 ```go
 func main() {
@@ -270,7 +271,8 @@ func main() {
 ```
 슬라이스는 내부적으로 배열의 부분 영역인 세그먼트에 대한 정보를 가지고 있다. 슬라이스는 3개의 필드로 구성되어 있는데 첫번째 필드는 배열에 대한 포인터 정보이고 두번째 필드는 length, 세번째는 capacity 정보가 있다. 길이와 용량을 지정해서 선언하면 용량만큼 배열이 만들어지고 슬라이스 첫번째 필드인 포인터는 배열의 첫번째 요소를 가리키게 된다.
 
-#### Map
+---
+## Map
 맵은 흔히 쓰이는 key value형 해시테이블을 구현한 자료구조이다. go에서는 `map[key타입]value타입` 이런식으로 선언해서 사용한다. 아래처럼 mapTest의 경우 nil 값을 가지게 되며 Nil Map이라고 부른다. Nil map에는 어떤 데이터도 쓸 수 없으며 panic에러가 뜨게 된다. `panic: assignment to entry in nil map` map을 초기화하기 위해서는 make함수를 사용할 수 있다. 이제 데이터를 넣으면 잘 출력이 되는 걸 확인할 수 있다. make 함수는 해시테이블 자료구조를 메모리에 생성하고 그 메모리를 가리키는 map value를 리턴하게 된다. 따라서 mapTest는 hashTable을 가리키는 map을 가리키게 되는 구조이다..!
 
 그리고 아래처럼 리터럴을 사용해서 초기화할 수도 있다. (이때 마지막에 ,찍는거 잊지 않기!!) 값을 읽을때는 보통 다른 언어처럼 `변수명[key값]`이고 만약 값이 없다면 nil이나 zero가 리턴된다. 그리고 삭제할때도 delete라는 함수를 써서 변수명과 key값을 같이 주면 쉽게 삭제할 수 있다.
@@ -316,7 +318,8 @@ func main() {
 }
 ```
 
-### Package
+---
+## Package
 Go에서는 패키지를 통해 코드의 모듈화나 코드의 재사용 기능을 제공. 그래서 패키지를 사용해서 작은 단위의 컴포넌트를 작성하고 이러한 패키지들을 활용해서 프로그램을 작성한다. go는 개발에 필요한 패키지들을 표준 라이브러리로 제공! 표준 라이브러리 패키지들은 GOROOT/pkg안에 존재한다. GOROOT 환경변수는 Go 설치 디렉토리를 가라키는데 이 부분은 자동으로 설치시 추가된다. [standard package](https://pkg.go.dev/std)
 Go compiler는 main 패키지 안의 main함수를 프로그램의 시작점인 엔트리 포인트로 인식한다. 다른 패키지를 사용할 때는 import를 이용해서 사용하면 된다. 이전에 fmt같은 패키지를 사용했는데 그것처럼 하면 된다.
 go에서는 표준인 경우에는 앞서 말한 것처럼 GOROOT/pkg에서 찾지만 사용자 패키지나 3rd party 패키지의 경우엔 GOPATH/pkg에서 패키지를 찾는다. GOPATH 같은 경우는 사용자가 지정해주어야 한다.
@@ -394,7 +397,8 @@ func main() {
 
 ```
 
-### Struct
+---
+## Struct
 struct에서 go는 java나 c와 달리 필드만 가지고 메소드는 갖지 않는다고 했는데 go에서는 아래처럼 메소드를 분리해서 쓰게 된다.
 ```go
 package main
@@ -442,7 +446,8 @@ func main() {
 }
 ```
 
-### interface
+---
+## interface
 인터페이스는 method들의 집합체이며 type이 구현해야 하는 메소드 prototype들을 정의한다. 인터페이스를 구현하기 위해서는 해당 타입이 그 인터페이스의 메소드들을 모두 구현하면 되는데 아래는 예로 들면 Shape이라는 인터페이스를 구현하기 위해서 Rect와 Circle이라는 type이 Shape의 메소드들을 아래처럼 모두 구현하면 된다. 아래 allArea처럼 입력 파라미터를 인터페이스를 구현한 타입 객체들을 받는 경우 해당 객체가 인터페이스를 구현(메소드를 전부 정의)하기만 하면 사용될 수 있다.
 
 ```go
@@ -506,5 +511,149 @@ func main() {
 	var x interface{} = "string"
 	i := x.(string)
 	fmt.Println(i)
+}
+```
+
+---
+## Error
+go에서는 내장 타입으로 error라는 인터페이스를 가진다. 이 인터페이스에 하나의 메소드를 가지고 있고 이걸 이용해서 에러 타입을 커스텀하게 만들 수 있다.
+```go
+type error interface {
+	Error() string
+}
+
+func main() {
+	f, err := os.Open("./test.txt")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	fmt.Println(f.Name())
+}
+```
+error를 custom하게 하는 방법은 다음과 같다. pointer receiver로 메소드를 선언해주고 출력하고 싶은 메시지 형태로 바꾸면 된다.
+```go
+type MyError struct {
+	Code string
+	Msg  string
+}
+
+func (e *MyError) Error() string {
+	return e.Code + ", " + e.Msg
+}
+
+func main() {
+	num, err := test(0)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	fmt.Println(num)
+}
+func test(num int) (int, error) {
+	if num > 1 {
+		return -1, nil
+	}
+	return 1, &MyError{Code: "200", Msg: "Test"}
+}
+```
+---
+## defer & panic
+defer 키워드는 특정 문장 혹은 함수를 나중에 실행하도록 한다. 여기서 panic이라는 키워드도 같이 등장하는데 panic함수는 현재 함수를 즉시 멈추고 함수에 defer 키워드를 모두 실행한 후 즉시 리턴한다. panic 모드 실행 방식은 다시 상위함수에도 똑같이 적용되고 계속 콜스택을 타고 올라가서 결국엔 에러를 내고 종료하게 된다. 현재는 main이라서 종료되지만 만약 함수 내에서 panic함수를 쓸 경우 결국엔 main에서 종료된다.
+```go
+func main() {
+	f, err := os.Open("1.txt")
+	if err != nil {
+		panic(err)
+	}
+	// main 마지막에 파일 close 실행
+	defer f.Close()
+	bytes := make([]byte, 1024)
+	f.Read(bytes)
+	println(len(bytes))
+}
+```
+panic 함수에 의한 패닉 상태를 다시 정상으로 돌리는 방법도 있는데 recover함수가 그 역할을 한다.
+```go
+package main
+
+import (
+	"fmt"
+	"os"
+)
+func main() {
+	openFile("./test.txt")
+
+	println("Done.")
+}
+// panic함수는 defer 함수를 다 실행시키고 리턴함을 이용
+func openFile(fileName string) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("open error", r)
+		}
+	}()
+	f, err := os.Open(fileName)
+	if err != nil {
+		panic(err)
+	}
+
+	defer f.Close()
+}
+```
+
+---
+## goroutine
+goroutine은 go 런타임이 관리하는 경량화 논리적 쓰레드이다. go라는 키워드를 통해 새러운 goroutine을 실행하고 goroutine은 비동기적으로 함수루틴을 실행하며 여러 코드를 동시에 실행하는데 사용된다.<br>
+goroutine은 os 쓰레드보다 휠씬 가볍게 비동기 concurrent 처리를 구현하기 위하여 만든 것으로 기본적으로 go의 런타임이 자체 관리한다. 즉, os thread 1개에서 goroutine이 여러 개가 실행되곤 한다. go 런타임은 goroutine을 관리하면 go channel을 통해 goroutine간의 통신을 쉽게 할 수 있도록 한다.
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func test(msg string) {
+	fmt.Println(msg)
+	for i := 0; i < 10; i++ {
+		fmt.Println(msg, i)
+	}
+}
+
+func main() {
+	var wait sync.WaitGroup
+	wait.Add(2)
+	go test("test")
+	go func() {
+		defer wait.Done()
+		fmt.Println("go1")
+	}()
+	go func(msg string) {
+		defer wait.Done()
+		time.Sleep(5)
+		fmt.Println(msg)
+	}("msg")
+	wait.Wait()
+}
+```
+위처럼 익명함수를 이용해서 goroutine으로 비동기 처리할 수도 있다. waitgroup은 해당 개수(Add 메소드에 파라미터로 준 개수)만큼의 goroutine이 끝날 때까지 끝나길 기다린다.
+<br>
+go는 디폴트로 cpu 1개를 사용하고 여러 개의 goroutine은 cpu 1개를 concurrent하게 처리한다. 여러 개의 cpu를 이용해서 병렬처리하게 하려면 `runtime.GOMAXPROCS(2)`과 같은 함수를 호출하면 된다.
+```go
+func main() {
+	runtime.GOMAXPROCS(4)
+	var wait sync.WaitGroup
+	wait.Add(2)
+	go test("test")
+	go func() {
+		defer wait.Done()
+		fmt.Println("go1")
+	}()
+	go func(msg string) {
+		defer wait.Done()
+		time.Sleep(5)
+		fmt.Println(msg)
+	}("msg")
+	wait.Wait()
 }
 ```
