@@ -657,3 +657,141 @@ func main() {
 	wait.Wait()
 }
 ```
+
+---
+## channel
+go에서 channel은 데이터를 주고 받는 통로이며 흔히 goroutine들 사이에서 데이터를 주고 받을 때 사용한다. 채널은 make() 함수를 통해 미리 생성되어야 하고 채널 연산자 `<-`를 ㅗㅇ해 데이터를 주고 받는다. 채널을 생성할 때는 make 함수에 어떤 타입의 데이터를 주고 받을지도 미리 정의해야한다. 그리고 채널은 별도의 lock을 사용하지 않고 상대편이 보낼 때까지 채널에서 대기하면서 데이터를 동기화한다.
+```go
+package main
+
+import "fmt"
+func main() {
+	ch := make(chan bool)
+
+	go func() {
+		for i := 0; i < 10; i++ {
+			fmt.Println("test", i)
+		}
+		ch <- true
+	}()
+	<-ch
+}
+```
+go에서 채널의 종류는 unbuffered와 buffered 두개가 존재한다. 위의 예제는 unbuffered channel로서 하나의 수신자가 데이터를 받을 때까지 송신자가 보내는 데이터 채널에 묶여있게 된다. 반대로 buffered 채널은 수신자가 받을 준비가 안되더라도 지정된 버퍼만큼 데이터를 보내고 다른 일을 수행할 수 있다. 만드는 방식 기존의 make 함수 파라미터에 버퍼 개수 N을 추가 해주면 된다. 버퍼 채널을 이용하지 않고 위처럼 goroutine도 사용하지 않는다면 데드락이 발생하게 되는데 그 이유는 채널을 받을 수신자가 없기 때문이다.
+```go
+package main
+//fatal error: all goroutines are asleep - deadlock!
+func main() {
+	ch := make(chan bool)
+	ch <- true
+	<-ch
+}
+```
+하지만 goroutine을 이용하지 않고 버퍼 채널을 이용한다면 버퍼 개수 만큼 데이터를 보낼 수 있다. 하지만 버퍼 개수를 초과하면 다시 데드락이 발생하게 된다.<br>
+채널을 파라미터 형태로도 넘길 수 있다. 하지만 송신 채널에서 수신을 하면 안되고 수신채널에서 송신을 하면 안된다. 만약 그렇게 되면 에러가 발생하게 된다.
+```go
+func main() {
+	ch := make(chan string, 1)
+	send(ch)
+	receive(ch)
+}
+func send(ch chan<- string) {
+	ch <- "test"
+}
+func receive(ch <-chan string) {
+	result := <-ch
+	fmt.Println(result)
+}
+```
+채널을 닫을 수도 있는데 채널을 닫게되면 더 이상 송신할 순 없지만 수신은 계속 가능하다. 채널은 파라미터를 두개를 리턴하는데 하나는 메시지고 하나는 수신 성공 여부이다.
+```go
+package main
+
+import "fmt"
+
+func main() {
+	ch := make(chan string, 2)
+	send(ch)
+	send(ch)
+	close(ch)
+	receive(ch)
+	receive(ch)
+	if _, success := <-ch; !success {
+		fmt.Println("no data")
+	}
+}
+func send(ch chan<- string) {
+	ch <- "test"
+}
+func receive(ch <-chan string) {
+	result := <-ch
+	fmt.Println(result)
+}
+```
+위처럼 채널에 데이터가 있을 때가지 다 꺼내는 방법도 있지만 언제 닫혔는지 모를 수도 있기 때문에 위처럼 두번째 파라미터를 이용해서 for문으로 데이터를 수신하거나 아래처럼 range를 이용해서 데이터를 수신하는 방법이 있다.
+```go
+// 1
+func main() {
+	ch := make(chan string, 2)
+	send(ch)
+	send(ch)
+	close(ch)
+	for {
+		if i, success := <-ch; success {
+			fmt.Println(i)
+		} else {
+			break
+		}
+	}
+}
+
+// 2
+func main() {
+	ch := make(chan string, 2)
+	send(ch)
+	send(ch)
+	close(ch)
+	for i := range ch {
+		fmt.Println(i)
+	}
+}
+```
+go에서는 복수의 채널에 대해 기다리면서 준비된 채널을 실행하는 기능을 제공하는 그때 이용하는게 select문이다. select문은 여러 개의 case 문에서 각각 다른 채널을 기다리다가 준비가 된 채널 case를 실행한다. 하지만 select문 안에 default문이 있으면 case문을 기다리지 않고 바로 default문을 실행한다.
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	ch1 := make(chan bool)
+	ch2 := make(chan bool)
+	go runF(ch1)
+	go runS(ch2)
+
+EXIT:
+	for {
+		select {
+		//default:
+		//	fmt.Println("default")
+		case <-ch1:
+			fmt.Println("run first")
+		case <-ch2:
+			fmt.Println("run second")
+			break EXIT
+		}
+	}
+	fmt.Println("End")
+}
+func runF(ch chan bool) {
+	time.Sleep(time.Second * 2)
+	ch <- true
+}
+func runS(ch chan bool) {
+	time.Sleep(time.Second * 4)
+	ch <- true
+}
+
+```
