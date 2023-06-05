@@ -393,3 +393,53 @@ func main() {
 }
 
 ```
+
+### Struct
+struct에서 go는 java나 c와 달리 필드만 가지고 메소드는 갖지 않는다고 했는데 go에서는 아래처럼 메소드를 분리해서 쓰게 된다.
+```go
+package main
+
+import "fmt"
+
+type Rect struct {
+	width, height int
+}
+
+func (r Rect) rectangle() int {
+	return r.width * r.height
+}
+
+func main() {
+	rect := Rect{5, 10}
+	area := rect.rectangle()
+	fmt.Println(area)
+}
+```
+위처럼 Rect라는 struct에 rectangle이라는 메소드를 정의해서 사용할 수 있는데 함수명 앞에는 receiver라고 불리고 메소드가 속한 struct 타입과 struct 변수명을 지정하게 된다. 그래서 위에서는 r을 변수로 사용해서 함수 내부에서 입력 파라미터처럼 사용할 수 있다.
+<br>
+receiver의 종류는 value형과 pointer형이 있다. value receiver는 struct의 데이터를 복사하면 전달하고 pointer receiver는 struct의 포인터만을 전달한다. 따라서 value 같은 경우는 필드값이 변경되더라도 호출된 데이터는 변경되지 않고 포인터는 반대로 그대로 반영되게 된다.
+```go
+package main
+
+import "fmt"
+
+type Rect struct {
+	width, height int
+}
+func (r Rect) rectangle() int {
+	return r.width * r.height
+}
+func (r *Rect) rect_Pointer() int {
+	r.width++
+	return r.width * r.height
+}
+func main() {
+	rect := Rect{5, 10}
+	area := rect.rectangle()
+	fmt.Println(area)
+	area1 := rect.rect_Pointer()
+	fmt.Println(area1)
+}
+```
+
+### interface
