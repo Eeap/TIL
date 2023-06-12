@@ -795,3 +795,36 @@ func runS(ch chan bool) {
 }
 
 ```
+---
+## JSON
+Go에서 JSON을 사용하기 위해서는 표준패키지 encoding/json을 사용해야한다. 이때 JSON의 key값은 문자열이 되어야하고 map이나 구조체 데이터를 주로 josn으로 인코딩하게 된다. 이때 json.Marshal를 써서 encoding을 하고 반대로 decoding은 json.Unmarshal을 사용한다. 이때 json으로 encoding한 바이트배열을 문자열로 바꿀 때는 string으로 형변환을 해주면 된다.
+```go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+type Member struct {
+	Name string
+	Age  int
+}
+func main() {
+	mem := Member{"sumin", 20}
+	jsonBytes, err := json.Marshal(mem)
+	if err != nil {
+		panic(err)
+	}
+	jsonData := string(jsonBytes)
+	fmt.Println(jsonData)
+
+	//decoding
+	var memd Member
+	errd := json.Unmarshal(jsonBytes, &memd)
+	if errd != nil {
+		panic(errd)
+	}
+	fmt.Println(memd.Name)
+}
+
+```
