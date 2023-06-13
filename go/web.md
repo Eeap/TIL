@@ -75,3 +75,97 @@ func main() {
 
 ```
 static file의 경우엔 `app.Static(prefix, root string, config ...Static)` 첫 번째 파라미터에 prefix를 적어주게 해당 prefix 이후에 요청하는 static 파일을 root 경로에서 찾아서 반환해준다. 예를 들어 위에서 /static/index.html을 요청했다면 현재 디렉토리에 있는 index.html 파일을 찾아서 반환해주게 된다.
+<br>
+### fiber Config
+이제부터는 fiber의 routing 이외에 config나 middleware 등 여러 가지에 대해 더 알아보도록 하자!
+```go
+//아래처럼 config를 사용해서 초기에 custom하게 app을 설정할 수 있다. field는 이외에도 다양하게 존재하니 참고!
+app := fiber.New()
+app := fiber.New(fiber.Config{
+	AppName: "Test App",
+	CaseSensitive: true,
+	StrictRouting: true,
+})
+```
+static의 경우도 위의 app의 config를 이용해서 custom한 것처럼 config를 이용해서 더 다양한 설정을 할 수 있다. 아래 옵션 이외에도 download cacheduration 같은 더 다양한 옵션들이 있고 필요한 경우 설정해서 쓰면 좋을 것 같다.
+```go
+app.Static("/", "./public", fiber.Static{
+  Compress:      true,
+  ByteRange:     true,
+  Browse:        true,
+  Index:         "index.html",
+  MaxAge:        3600,
+})
+```
+
+### Use keyword
+fiber에서는 Use라는 func이 존재하는데 이건 middleware 패키지를 사용하거나 url을 prefix하기 위해서 사용된다. 아래는 Use를 prefix를 위해서 사용하였고 Next 함수를 통해서 해당 api 이외에 맨 아래에 있는 Get 요청을 받고 있는 라우팅도 처리가 될 수 있다.
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/gofiber/fiber/v2"
+)
+
+func main() {
+	app := fiber.New()
+	// 모든 요청에 대해
+	app.Use(func(c *fiber.Ctx) error {
+		fmt.Println("nothing")
+		return c.Next()
+	})
+	// /api로 오는 요청에 대해
+	app.Use("/api", func(c *fiber.Ctx) error {
+		fmt.Println("api")
+		return c.Next()
+	})
+	// /test나 /use로 오는 요청에 대해
+	app.Use([]string{"/test", "/use"}, func(c *fiber.Ctx) error {
+		return c.Next()
+	})
+	// 여러 개의 핸들러를 등록하는 경우
+	app.Use("/multi", func(c *fiber.Ctx) error {
+		return c.Next()
+	}, func(c *fiber.Ctx) error {
+		return c.Next()
+	})
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("hello, one")
+	})
+	app.Listen(":3000")
+}
+```
+
+### Mount
+fiber에서는 mount를 통해 fiber instance를 마운팅할 수 있다. 아래처럼 app에 mount fiber 인스턴스가 마운팅되게 되면 mount의 get은 /app/mount라는 경로에 대해서 요청을 처리하게 된다. endpoint가 마운트 순서에 따라 달라지기 때문에 mount같은 경우는 order도 중요 요소인 것 같다.
+package main
+
+import (
+	"fmt"
+	"github.com/gofiber/fiber/v2"
+	"log"
+)
+func main() {
+	app := fiber.New()
+	mount := fiber.New()
+	app.Mount("/app", mount)
+
+	mount.Get("/mount", func(ctx *fiber.Ctx) error {
+		return ctx.SendStatus(fiber.StatusOK)
+	})
+	one := fiber.New()
+	two := fiber.New()
+	three := fiber.New()
+	two.Mount("/three", three)
+	one.Mount("/two", two)
+	app.Mount("/one", one)
+	fmt.Println(one.MountPath()) // /one
+	fmt.Println(two.MountPath()) // /one/two
+	fmt.Println(three.MountPath())  // /one/two/three
+	fmt.Println(app.MountPath())   // nothing
+	log.Fatal(app.Listen(":3000"))
+}
+```
+
+### Group
