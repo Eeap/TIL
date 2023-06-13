@@ -169,3 +169,188 @@ func main() {
 ```
 
 ### Group
+fiber에서는 group을 이용해서 routing을 그룹으로 처리할 수도 있다. 최종적으로 v1 인스턴스는 /app/v1/list에 대해 요청을 처리하게 된다.
+```go
+package main
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"log"
+)
+
+func main() {
+	app := fiber.New()
+
+	api := app.Group("/api", func(ctx *fiber.Ctx) error {
+		return ctx.Next()
+	})
+	v1 := api.Group("/v1", func(ctx *fiber.Ctx) error {
+		return ctx.Next()
+	})
+	v1.Get("/list", func(ctx *fiber.Ctx) error {
+		return ctx.SendString("api/v1/list")
+	})
+
+	log.Fatal(app.Listen(":3000"))
+}
+
+```
+
+### Route
+fiber에서는 Route라는 func을 이용해서 prefix를 설정해서 routing할 함수를 정의할 수도 있다. 요기서 Name이라는게 등장하는데 요건 추후에 뒤에서 다룰 내용이지만 route에 naming을 해서 나중에 route을 get할때 name을 가지고 가져올 수 있다.
+```go
+package main
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"log"
+)
+
+func main() {
+	app := fiber.New()
+
+	app.Route("/routes", func(router fiber.Router) {
+		router.Get("/v1", func(c *fiber.Ctx) error {
+			return c.SendString("test/v1")
+		}).Name("v1")
+
+	}, "routes.")
+
+	log.Fatal(app.Listen(":3000"))
+}
+
+```
+
+### Server shutdown
+fiber에서는 다양한 server를 종료하는 func들이 제공되는데 먼저 Shutdown 같은 경우는 active connection들이 종료될 떄까지(listener들의 종료를 기다린다) 기다렸다가 종료하게 되고 ShutdownWithTimeout은 강제로 시간이 자니면 close하게 되고 ShutdownWithContext은 context의 deadline이 넘게되면 종료되게 된다.(여기서 Context는 유지해야할 value 값을 저장해서 전달하고 필요한 곳에서 값을 꺼내 사용하기 위해서 사용되는 go의 타입!)
+```go
+func (app *App) Shutdown() error
+func (app *App) ShutdownWithTimeout(timeout time.Duration) error
+func (app *App) ShutdownWithContext(ctx context.Context) error
+```
+
+### Stack
+stack을 이용하면 내가 정의한 router에 대한 method, path, params에 대한 정보를 확인할 수 있다.
+```go
+func main() {
+	app := fiber.New()
+
+	app.Get("/test/:val", handler)
+	app.Post("/post", handler)
+
+	data, _ := json.MarshalIndent(app.Stack(), "", "	")
+	fmt.Println(string(data))
+
+	log.Fatal(app.Listen(":3000"))
+}
+```
+```json
+[
+	[
+		{
+			"method": "GET",
+			"name": "",
+			"path": "/test/:val",
+			"params": [
+					"val"
+			]
+		}
+	],
+	[
+		{
+			"method": "HEAD",
+			"name": "",
+			"path": "/test/:val",
+			"params": [
+					"val"
+			]
+		}
+	],
+	[
+		{
+			"method": "POST",
+			"name": "",
+			"path": "/post",
+			"params": null
+		}
+	],
+]
+```
+
+### Name
+name함수는 앞에서 언급했듯이 router에 naming을 하기 위한 함수이다. group으로 묶으면 naming을 test.~ 처럼 할 수 있는 것 같다.
+```go
+func main() {
+	app := fiber.New()
+	app.Get("/test", handler).Name("main")
+	gr := app.Group("/api")
+	gr.Name("test.")
+	gr.Get("/v1", handler).Name("v1")
+
+	data, _ := json.MarshalIndent(app.Stack(), "", "	")
+	fmt.Println(string(data))
+
+	log.Fatal(app.Listen(":3000"))
+}
+```
+```json
+[
+ [
+  {
+   "method": "GET",
+   "name": "main",
+   "path": "/test",
+   "params": null
+  },
+  {
+   "method": "GET",
+   "name": "test.v1",
+   "path": "/api/v1",
+   "params": null
+  }
+ ],
+]
+
+```
+
+### GetRoute
+이전에 사용했던 naming을 기반으로 router에 대한 정보를 불러오는 함수로 GetRoute가 있다.
+```go
+func main() {
+	app := fiber.New()
+	app.Get("/test", handler).Name("main")
+	data, _ := json.MarshalIndent(app.GetRoute("main"), "", " ")
+	// 전체 라우터에 대한 정보
+	data, _ := json.MarshalIndent(app.GetRoutes(true), "", " ")
+	fmt.Println(string(data))
+	log.Fatal(app.Listen(":3000"))
+}
+```
+
+### Test
+작성한 router에 대한 test를 Test라는 함수를 통해 진행해볼 수 있다. 아래는 req를 하나 생성해서 직접 test를 해보는 예제 코드이다!
+
+```go
+package main
+import (
+	"fmt"
+	"github.com/gofiber/fiber/v2"
+	"io"
+	"net/http/httptest"
+)
+func main() {
+	app := fiber.New()
+	app.Get("/", func(c *fiber.Ctx) error {
+		fmt.Println(c.BaseURL())
+		fmt.Println(c.Get("X-Test-Header"))
+		return c.SendString("test resp")
+	})
+	req := httptest.NewRequest("GET", "http://test.com", nil)
+	req.Header.Set("X-Test-Header", "test")
+	res, _ := app.Test(req)
+	if res.StatusCode == fiber.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		fmt.Println(string(body))
+	}
+}
+```
